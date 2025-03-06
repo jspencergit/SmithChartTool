@@ -1,8 +1,11 @@
+import matplotlib
+matplotlib.use('Qt5Agg')  # Ensure Qt5Agg backend
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.widgets import CheckButtons, TextBox
 
 def draw_smith_chart(Z0=50):
+    print("Starting draw_smith_chart...")  # Debug print
     # Create figure and axes
     fig = plt.figure(figsize=(12, 10))
     ax = fig.add_axes([0.15, 0.05, 0.80, 0.90])
@@ -67,7 +70,7 @@ def draw_smith_chart(Z0=50):
         ax.text(x, y, text, color=color, fontsize=fontsize, ha=ha, va=va, 
                 rotation=rotation, rotation_mode='anchor')
 
-    # Dynamic impedance display
+    # Dynamic impedance display for mouse movement
     coord_text = ax.text(0.05, 0.95, '', transform=ax.transAxes, fontsize=10, 
                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='black'))
 
@@ -103,39 +106,42 @@ def draw_smith_chart(Z0=50):
     gamma_circle = plt.Circle((0, 0), 0.5, fill=False, color='black', linestyle='dotted', linewidth=1.5)
     gamma_patch = ax.add_patch(gamma_circle)
     gamma_patch.set_visible(False)
+    print("Gamma circle created, initial visibility:", gamma_patch.get_visible())  # Debug print
 
-    # "Return Loss" section with improved design
-    return_loss_ax = fig.add_axes([0.03, 0.15, 0.20, 0.30])  # Increased width to 0.18, height to 0.30
-    return_loss_ax.set_facecolor('#E6F0FA')  # Soft pastel blue
+    # "Return Loss" section
+    return_loss_ax = fig.add_axes([0.03, 0.15, 0.18, 0.35])
+    return_loss_ax.set_facecolor('#E6F0FA')
     return_loss_ax.spines['top'].set_visible(True)
     return_loss_ax.spines['bottom'].set_visible(True)
     return_loss_ax.spines['left'].set_visible(True)
     return_loss_ax.spines['right'].set_visible(True)
-    return_loss_ax.spines['top'].set_color('#4682B4')  # Steel blue border
+    return_loss_ax.spines['top'].set_color('#4682B4')
     return_loss_ax.spines['bottom'].set_color('#4682B4')
     return_loss_ax.spines['left'].set_color('#4682B4')
     return_loss_ax.spines['right'].set_color('#4682B4')
     return_loss_ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
 
-    # Title for the section
-    return_loss_ax.text(0.5, 0.85, 'Return Loss', fontsize=12, ha='center', va='top', 
+    return_loss_ax.text(0.5, 0.90, 'Return Loss', fontsize=12, ha='center', va='top', 
                         transform=return_loss_ax.transAxes, weight='bold', color='#333333')
 
-    # Checkbox for reflection coefficient circle
-    rax = plt.axes([0.06, 0.20, 0.10, 0.04])  # Shifted right to 0.06, reduced width to 0.10
+    rax = plt.axes([0.06, 0.22, 0.10, 0.04])
     check = CheckButtons(rax, ['Show |Γ| Circle'], [False])
     check.labels[0].set_fontsize(10)
     check.labels[0].set_color('#333333')
+    print("Checkbox created")  # Debug print
 
     def toggle_circle(label):
-        gamma_patch.set_visible(check.get_status()[0])
-        fig.canvas.draw_idle()
+        print("Checkbox clicked, label:", label)  # Debug print
+        visible = check.get_status()[0]
+        print("Checkbox status (visible):", visible)  # Debug print
+        gamma_patch.set_visible(visible)
+        print("Gamma circle visibility set to:", gamma_patch.get_visible())  # Debug print
+        fig.canvas.draw()  # Use draw() instead of draw_idle() for immediate update
 
     check.on_clicked(toggle_circle)
 
-    # Text boxes for |Γ| and dB
-    ax_gamma = plt.axes([0.06, 0.34, 0.10, 0.04])  # Shifted right to 0.06, lowered to 0.34
-    ax_db = plt.axes([0.06, 0.28, 0.10, 0.04])     # Shifted right to 0.06, lowered to 0.28
+    ax_gamma = plt.axes([0.06, 0.34, 0.10, 0.04])
+    ax_db = plt.axes([0.06, 0.28, 0.10, 0.04])
     text_gamma = TextBox(ax_gamma, '|Γ| ', initial='0.5', label_pad=0.01, textalignment='center')
     text_db = TextBox(ax_db, 'dB ', initial='-6.0', label_pad=0.01, textalignment='center')
     text_gamma.text_disp.set_fontsize(11)
@@ -155,7 +161,7 @@ def draw_smith_chart(Z0=50):
                 text_db.set_val(f'{db:.1f}')
                 gamma_patch.set_radius(gamma)
                 if check.get_status()[0]:
-                    fig.canvas.draw_idle()
+                    fig.canvas.draw()
             else:
                 text_gamma.set_val('0.5')
                 update_db('-6.0')
@@ -171,7 +177,7 @@ def draw_smith_chart(Z0=50):
                 text_gamma.set_val(f'{gamma:.3f}')
                 gamma_patch.set_radius(gamma)
                 if check.get_status()[0]:
-                    fig.canvas.draw_idle()
+                    fig.canvas.draw()
             else:
                 text_db.set_val('-6.0')
                 update_gamma('0.5')
@@ -181,6 +187,53 @@ def draw_smith_chart(Z0=50):
 
     text_gamma.on_submit(update_gamma)
     text_db.on_submit(update_db)
+
+    # Click event handling for marking a single impedance
+    click_marker = None
+    click_text = None
+
+    def on_click(event):
+        nonlocal click_marker, click_text
+        if event.inaxes != ax:
+            return
+        gamma_x = event.xdata
+        gamma_y = event.ydata
+        if gamma_x**2 + gamma_y**2 > 1:
+            return
+
+        # Remove previous marker and text if they exist
+        if click_marker is not None:
+            click_marker.remove()
+        if click_text is not None:
+            click_text.remove()
+
+        # Calculate impedance
+        gamma = complex(gamma_x, gamma_y)
+        z_normalized = (1 + gamma) / (1 - gamma)
+        Z = z_normalized * Z0
+        R = Z.real
+        X = Z.imag
+        if abs(X) < 0.1:
+            impedance_str = f'Z = {R:.1f} Ω'
+        else:
+            sign = '+' if X >= 0 else '-'
+            impedance_str = f'Z = {R:.1f} {sign} j{abs(X):.1f} Ω'
+
+        # Add colored dot
+        click_marker, = ax.plot(gamma_x, gamma_y, 'ro', markersize=8)
+
+        # Add impedance text next to the dot
+        offset = 0.1
+        ha = 'left' if gamma_x < 0 else 'right'
+        va = 'bottom' if gamma_y < 0 else 'top'
+        text_x = gamma_x + offset if gamma_x < 0 else gamma_x - offset
+        text_y = gamma_y + offset if gamma_y < 0 else gamma_y - offset
+        click_text = ax.text(text_x, text_y, impedance_str, fontsize=10, ha=ha, va=va, 
+                             color='black', bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+
+        fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect('button_press_event', on_click)
 
     plt.show()
 
